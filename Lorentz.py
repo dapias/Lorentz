@@ -1,15 +1,15 @@
 # -*- coding: utf-8 -*-
 """
-Created on Fri Apr 18 11:38:56 2014
+Created on Tue Aug  5 17:56:59 2014
 
-@author: diego
+@author: maquinadt
 """
 
 import numpy as np
 import random
 from matplotlib import pyplot as plt
 
-class particula(object):
+class Particula(object):
     """clase Disco que recibe una lista de posiciones y velocidades"""
 
     def __init__(self,x,v,radio = 1.):
@@ -23,20 +23,22 @@ class particula(object):
     def movimiento(self,delta_t):
         self.x += delta_t * self.v
 
-class disco(object):
-    def__init__(self, radio_interno, posicion_disco = np.array([0.,0.])):
-        self.radio = radio_interno
+class Disco(object):
+
+
+    def __init__(self, radio_interno, posicion_disco = np.array([0.,0.])):
+        self.radio_interno = radio_interno
         self.posicion_disco = posicion_disco
 
 
-class billar(object):
-    def __init__(self,tamano,radio_interno, disco):
+class Billar(object):
+    def __init__(self,tamano, disco):
         self.tamano = tamano
         self.disco = disco
 
 class ReglasColision(object):
-    def __init__(self):
-        pass
+   def __init__(self, billar):
+        self.billar = billar
 
    def colision_pared(self, particula):
 
@@ -52,63 +54,53 @@ class ReglasColision(object):
             else:
                 particula.v[1] = -particula.v[1]
 
-    def colision_discos(self,particula,disco):
-       x_ij = particula.x - disco.x
-       v_ij = particula.v
+   def colision_disco(self,particula):
+        #Consideraré que la partícula tiene masa unitaria
+
+       x_ij = particula.x - self.billar.disco.posicion_disco
        vector_unitario = x_ij/np.linalg.norm(x_ij)
-       h = np.dot(v_ij, vector_unitario)
+       v_ij = particula.v
+       v_ij_punto_v_unitario = np.dot(v_ij,vector_unitario)
+
 
        # Esto es lo importante de esta función:
        # actualiza velocidades!
 
-       particula.v -= h*vector_unitario
+       particula.v -= 2*(v_ij_punto_v_unitario)*vector_unitario
 
 
-   def tiempo_colision_discos(self, particula, disco):
-       x_ij = particula.x - disco.x
+   def tiempo_colision_disco(self, particula):
+       x_ij = particula.x - self.billar.disco.posicion_disco
+       vector_unitario = x_ij/np.linalg.norm(x_ij)
        v_ij = particula.v
+       #x_ij_punto_v_unitario = np.dot(x_ij,vector_unitario)
+       v_ij_punto_v_unitario = np.dot(v_ij,vector_unitario)
        x_ij_punto_v_ij = np.dot(x_ij,v_ij)
 
        # Si no hay condiciones para la colisión
        if x_ij_punto_v_ij > 0:
            return float('inf')
 
-       d_cuadrada = np.sum(x_ij**2.)
-       q = d_cuadrada-(particula.radio + disco.radio)**2.0
-       velocidad_cuadrada = np.sum(v_ij**2.)
-       w = x_ij_punto_v_ij **2. -  q*velocidad_cuadrada
+       d_ij = np.linalg.norm(x_ij)
 
-       #De nuevo, si no hay condiciones para la colisión
-       if w<0:
-           return float('inf')
+       #Ahora sí, viene la fórmula para el tiempo
 
-        #Ahora sí, viene la fórmula para el tiempo
-
-       delta_t= q/(-x_ij_punto_v_ij  + np.sqrt(w))
-
-       x_i = disco_i.x + delta_t * disco.v
-
-       if not self.caja.contiene(x_i,disco_i.radio):
-           return float('inf')
-
-       x_j = disco_j.x + delta_t * disco_j.v
-
-       if not self.caja.contiene(x_j, disco_j.radio) :
-           return float('inf')
-
+       delta_t = (d_ij - particula.radio - self.billar.disco.radio_interno ) / abs(v_ij_punto_v_unitario)
 
        return delta_t
 
-    def _dt(self, particula,indice):
+   def _dt(self, particula,indice):
 
         dt = float('inf')
 
         if particula.v[indice] > 0:
-            dt = (self.caja.tamano - (particula.x[indice] + particula.radio)) /\
+            dt = (self.billar.tamano - (particula.x[indice] + particula.radio)) /\
                 particula.v[indice]
+
         elif particula.v[indice] < 0:
-            dt = (self.caja.tamano + (particula.x[indice] - particula.radio)) /\
+            dt = (self.billar.tamano + (particula.x[indice] - particula.radio)) /\
                 -particula.v[indice]
+
         return dt
 
 
@@ -117,146 +109,95 @@ class ReglasColision(object):
         resultado = min(self._dt(particula, 0), self._dt(particula, 1))
         return resultado
 
-    class Simulacion(object):
+class Simulacion(object):
 
-    def __init__(self, particulas, reglas_colision=None, visualizacion = False):
 
-        self.particulas = particulas
-        self.long = len(self.particulas)
-        if reglas_colision is None:
-            reglas_colision = ReglasColision()
+    def __init__(self, particula, reglas_colision, billar):
+
+        self.particula = particula
         self.reglas_colision = reglas_colision
+        self.billar = billar
         self.eventos = dict()
         self.tiempo = 0
-        self.actualizar_particulas()
         self.t_eventos = []
-
-        self.visualizacion = visualizacion
-        if self.visualizacion:
-            self.registro_posiciones = dict()
-            self.registro_velocidades = dict()
-
-
-
-
-    def actualizar_particulas(self):
-        for particula in self.particulas:
-            self.actualizar(particula)
+        self.posiciones = []
+        self.velocidades = []
+        self.actualizar(particula)
 
     def actualizar(self, particula):
+#        print self.eventos
 
-        for tiempo in particula.tiempos_eventos:
-            if tiempo in self.eventos:
-                del self.eventos[tiempo]
+        self.eventos = dict()
 
-        particula.tiempos_eventos = []
+        dt = self.reglas_colision.tiempo_colision_disco(particula)
 
-        for otra_particula in self.particulas:
-            if otra_particula != particula:
-                dt = self.reglas_colision.tiempo_colision_discos(particula,
-                 otra_particula)
-                if dt < float('inf'):
-                    tiempo_col = self.tiempo + dt
-                    self.eventos[tiempo_col] = (particula,otra_particula)
-                    particula.tiempos_eventos.append(tiempo_col)
-                    otra_particula.tiempos_eventos.append(tiempo_col)
+        if dt < float('inf'):
+                tiempo_col = self.tiempo + dt
+                self.eventos[tiempo_col] = (particula, 2.)
 
         dt = self.reglas_colision.tiempo_colision_pared(particula)
-
 
         if dt < float('inf'):
             tiempo_col = self.tiempo + dt
             self.eventos[tiempo_col] = (particula, None)
-            particula.tiempos_eventos.append(tiempo_col)
 
-    def mover_particulas(self, delta_t):
-        for particula in self.particulas:
-            particula.movimiento(delta_t)
 
     def run(self, steps=10):
 
-        if self.visualizacion:
-            self.registro_posiciones = {"Disco" + str(i + 1) : np.ones((steps, 2)) for i in range(int(self.long))}
-            self.registro_velocidades = {"Disco" + str(i + 1) : np.ones((steps, 2)) for i in range(int(self.long))}
-
-#        for j in xrange(self.long):
-#            self.registro_posiciones["Disco"+str(j+1)] = self.particulas[j].x
-#            self.registro_velocidades["Disco"+str(j+1)] = self.particulas[j].v
-
-
-
-
         for i in xrange(steps):
+
             t_siguiente_evento = min(self.eventos.keys())
             siguiente_evento = self.eventos[t_siguiente_evento]
-
-
-
-            if self.visualizacion:
-                for j in xrange(self.long):
-                    self.registro_posiciones["Disco"+str(j+1)][i] = self.particulas[j].x
-                    self.registro_velocidades["Disco"+str(j+1)][i] = self.particulas[j].v
-
-
-            print i,  self.tiempo, self.particulas
-
-
+            print i,  self.tiempo, self.particula
 
             #Tiempo de la última colisión:
 
             self.t_eventos.append(self.tiempo)
 
 
+
             if siguiente_evento[1] is None:
                 delta_t = self.reglas_colision.tiempo_colision_pared(siguiente_evento[0])
-                self.mover_particulas(delta_t)
-                self.tiempo = t_siguiente_evento
+                self.particula.movimiento(delta_t)
                 self.reglas_colision.colision_pared(siguiente_evento[0])
-                self.actualizar(siguiente_evento[0])
 
             else:
-                delta_t = self.reglas_colision.tiempo_colision_discos(siguiente_evento[0], siguiente_evento[1])
-                self.mover_particulas(delta_t)
-                self.tiempo = t_siguiente_evento
-                self.reglas_colision.colision_discos(siguiente_evento[0], siguiente_evento[1])
-                self.actualizar(siguiente_evento[0])
-                self.actualizar(siguiente_evento[1])
+                delta_t = self.reglas_colision.tiempo_colision_disco(siguiente_evento[0])
+                self.particula.movimiento(delta_t)
+                self.reglas_colision.colision_disco(siguiente_evento[0])
 
+            self.tiempo = t_siguiente_evento
+            self.actualizar(siguiente_evento[0])
 
+            self.posiciones.append(siguiente_evento[0].x)
+            self.velocidades.append(siguiente_evento[0].v)
 
-
-
-    def energia_cin(self):
-        return np.sum(np.sum(particula.v**2) for particula in self.particulas)
-
-
-def es_traslape(nueva_particula, particulas):
-    for particula in particulas:
-        if nueva_particula.traslape_con(particula):
-            return True
-    return False
-
-def crear_particulas_aleatorias(radio, tamano_caja,  v_min, v_max, num_particulas):
+def crear_particula_aleatoria(radio, billar,  v_min, v_max):
     #    np.random.seed(seed)
-    particulas = []
-    coords_max = tamano_caja - radio
-    coords_min = -tamano_caja + radio
-    for i in xrange(num_particulas):
-        traslape = True
-        while(traslape):
-            x = np.random.uniform(coords_min, coords_max, 2)
-            v = np.random.uniform(v_min, v_max, 2)
-            nueva_particula = Disco(x, v,radio)
-            traslape = es_traslape(nueva_particula, particulas)
-        particulas.append(nueva_particula)
-    return particulas
 
-def crear_simulacion(radio, tamano_caja, v_min, v_max, num_particulas, visualizacion = False):
-    caja = Caja(tamano_caja)
-    particulas = crear_particulas_aleatorias(radio, tamano_caja, v_min, v_max,num_particulas)
-    #particulas = [Disco([1,1],[3,1]),Disco([4,4],[4,0])]
-    reglas = ReglasColision(caja)
-    return Simulacion(particulas, reglas, visualizacion)
+    coords_max = billar.tamano - radio
+    coords_min = -billar.tamano + radio
+    traslape = True
+
+    while(traslape):
+        x = np.random.uniform(coords_min, coords_max, 2)
+        if   ((x[0] - billar.disco.posicion_disco[0])**2. + (x[1] -  billar.disco.posicion_disco[1])**2.) > billar.disco.radio_interno + radio:
+            traslape = False
+
+    v = np.random.uniform(v_min, v_max, 2)
+    particula = Particula(x, v,radio)
+
+    return particula
+
+
+def crear_simulacion(radio, radio_interno, tamano_caja, v_min, v_max, posicion_disco = np.array([0.,0.])):
+    disco = Disco(radio_interno,posicion_disco)
+    billar = Billar(tamano_caja,disco)
+    particula = crear_particula_aleatoria(radio, billar, v_min, v_max)
+    reglas = ReglasColision(billar)
+
+    return Simulacion(particula, reglas, billar)
 
 if __name__ == '__main__':
-
+    sim = crear_simulacion(1.,5.,10.,-1.,1.)
+    sim.run(10)
